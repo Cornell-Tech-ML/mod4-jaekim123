@@ -6,6 +6,9 @@ Be sure you have minitorch installed in you Virtual Env.
 import random
 
 import minitorch
+from minitorch import MathTest, MathTestVariable, Module
+import graph_builder
+from typing import List, Tuple, Union
 
 
 class Network(minitorch.Module):
@@ -13,13 +16,13 @@ class Network(minitorch.Module):
         super().__init__()
         self.linear = Linear(2, 1)
 
-    def forward(self, x):
+    def forward(self, x: Tuple[float, float]) -> float:
         y = self.linear(x)
         return minitorch.operators.sigmoid(y[0])
 
 
 class Linear(minitorch.Module):
-    def __init__(self, in_size, out_size):
+    def __init__(self, in_size: int, out_size: int) -> None:
         super().__init__()
         random.seed(100)
         self.weights = []
@@ -34,7 +37,7 @@ class Linear(minitorch.Module):
             b = self.add_parameter(f"bias_{j}", 2 * (random.random() - 0.5))
             self.bias.append(b)
 
-    def forward(self, inputs):
+    def forward(self, inputs: List[float]) -> List[float]:
         y = [b.value for b in self.bias]
         for i, x in enumerate(inputs):
             for j in range(len(y)):
@@ -43,8 +46,8 @@ class Linear(minitorch.Module):
 
 
 class ManualTrain:
-    def __init__(self, hidden_layers):
+    def __init__(self, hidden_layers: int) -> None:
         self.model = Network()
 
-    def run_one(self, x):
+    def run_one(self, x: Tuple[float, float]) -> float:
         return self.model.forward((x[0], x[1]))
