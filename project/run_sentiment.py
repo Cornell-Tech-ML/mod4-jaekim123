@@ -5,6 +5,7 @@ import embeddings
 import minitorch
 from datasets import load_dataset
 from minitorch.fast_conv import conv1d
+from minitorch.nn import CNNSentimentKim
 
 BACKEND = minitorch.TensorBackend(minitorch.FastOps)
 
@@ -40,7 +41,7 @@ class Conv1d(minitorch.Module):
         return output
 
         # Add bias (ensure proper broadcasting)
-        # The bias has shape (1, out_channels, 1), which should broadcast over (batch_size, out_channels, output_width)        
+        # The bias has shape (1, out_channels, 1), which should broadcast over (batch_size, out_channels, output_width)
         # raise NotImplementedError("Need to implement for Task 4.5")
 
 
@@ -67,7 +68,7 @@ class CNNSentimentKim(minitorch.Module):
     ):
         super().__init__()
         self.feature_map_size = feature_map_size
-        
+
         # self.convs = []
         # for filter_size in filter_sizes:
         #     conv = Conv1d(

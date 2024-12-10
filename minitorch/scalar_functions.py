@@ -443,6 +443,7 @@ class Sub(ScalarFunction):
         Returns:
         -------
             float: The difference of a and b.
+
         """
         return operators.sub(a, b)
 
@@ -458,5 +459,6 @@ class Sub(ScalarFunction):
         Returns:
         -------
             Tuple[float, float]: Gradients with respect to a and b.
+
         """
         return d_output, -d_output

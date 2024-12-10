@@ -1,25 +1,37 @@
-from .testing import MathTest, MathTestVariable  # type: ignore # noqa: F401,F403
-from .datasets import *  # noqa: F401,F403
-from .optim import *  # noqa: F401,F403
-from .tensor import *  # noqa: F401,F403
-from .testing import *  # noqa: F401,F403
-from .nn import *  # noqa: F401,F403
-from .fast_conv import *  # noqa: F401,F403
-from .tensor_data import *  # noqa: F401,F403
-from .tensor_functions import *  # noqa: F401,F403
-from .tensor_ops import *  # noqa: F401,F403
-from .scalar import *  # noqa: F401,F403
-from .scalar_functions import *  # noqa: F401,F403
-from .module import *  # noqa: F401,F403
-from .autodiff import *  # noqa: F401,F403
-from .module import *  # noqa: F401,F403
-from .module import *  # noqa: F401,F403
-from .autodiff import *  # noqa: F401,F403
-from .tensor import *  # noqa: F401,F403
-from .datasets import *  # noqa: F401,F403
-from .testing import *  # noqa: F401,F403
-from .optim import *  # noqa: F401,F403
-from .tensor_ops import *  # noqa: F401,F403
-from .fast_ops import *  # noqa: F401,F403
-from .cuda_ops import *  # noqa: F401,F403
-from . import fast_ops, cuda_ops  # noqa: F401,F403
+"""Minitorch Package.
+
+A minimalistic deep learning library inspired by PyTorch.
+Implements basic tensor operations, automatic differentiation,
+and neural network modules.
+"""
+
+from .tensor import Tensor
+from .operators import add, sub, mul, div, max, min
+from .testing import MathTest, MathTestVariable
+from .datasets import load_dataset
+from .optim import SGD, Adam
+from .tensor_ops import apply_gradients
+from .fast_conv import conv1d, conv2d
+from .nn import Linear, Conv1d, CNNSentimentKim
+from .tensor_data import shape, index_to_position, broadcast_index
+from .tensor_functions import Function, rand
+from .module import Module
+from .autodiff import Context
+
+
+def is_close(a: Tensor, b: Tensor, rtol: float = 1e-05, atol: float = 1e-08) -> bool:
+    """Element-wise comparison of two tensors to check if they are approximately equal.
+
+    Args:
+    ----
+        a (Tensor): First tensor.
+        b (Tensor): Second tensor.
+        rtol (float): Relative tolerance.
+        atol (float): Absolute tolerance.
+
+    Returns:
+    -------
+        bool: True if all elements are approximately equal, False otherwise.
+
+    """
+    return (abs(a - b) <= (atol + rtol * abs(b))).all().item() == 1

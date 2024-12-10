@@ -68,12 +68,12 @@ def _tensor_conv1d(
                     for k in range(kw):
                         # Handle reverse mode
                         w_p = w + k if not reverse else w + (kw - k - 1)
-                        
+
                         if w_p < width:
                             i_pos = b * s1_0 + ic * s1_1 + w_p * s1_2
                             w_pos = oc * s2_0 + ic * s2_1 + k * s2_2
                             acc += input[i_pos] * weight[w_pos]
-                
+
                 out_pos = b * out_s0 + oc * out_s1 + w * out_s2
                 out[out_pos] = acc
 
@@ -155,4 +155,4 @@ class Conv1dFun(Function):
         return grad_input, grad_weight
 
 
-conv1d = Conv1dFun.apply 
+conv1d = Conv1dFun.apply

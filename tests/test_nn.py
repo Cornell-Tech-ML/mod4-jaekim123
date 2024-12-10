@@ -1,11 +1,13 @@
 import pytest
-from hypothesis import given
+from hypothesis import given, settings
+import numpy as np
 
 import minitorch
 from minitorch import Tensor
+from .tensor_strategies import tensors
+from minitorch.nn import max  # Ensure that the max function is imported
 
 from .strategies import assert_close
-from .tensor_strategies import tensors
 
 
 @pytest.mark.task4_3
@@ -30,9 +32,33 @@ def test_avg(t: Tensor) -> None:
 
 @pytest.mark.task4_4
 @given(tensors(shape=(2, 3, 4)))
+@settings(max_examples=50)
 def test_max(t: Tensor) -> None:
-    # TODO: Implement for Task 4.4.
-    raise NotImplementedError("Need to implement for Task 4.4")
+    """
+    Test the `minitorch.nn.max` function to ensure it correctly computes the maximum
+    values along a specified dimension.
+
+    Args:
+    ----
+        t (Tensor): The input tensor for the max operation.
+    """
+    # Choose a random dimension to test
+    dim = np.random.randint(0, t.dim())
+
+    # Compute expected max using NumPy
+    t_np = t.to_numpy()
+    expected = np.max(t_np, axis=dim)
+
+    # Compute max using minitorch
+    out = max(t, dim)
+
+    # Ensure the output shape matches the expected shape
+    assert (
+        out.shape == expected.shape
+    ), f"Output shape {out.shape} does not match expected shape {expected.shape}"
+
+    # Compare the actual output with the expected output
+    np.testing.assert_allclose(out.to_numpy(), expected, rtol=1e-5, atol=1e-5)
 
 
 @pytest.mark.task4_4
@@ -92,3 +118,26 @@ def test_log_softmax(t: Tensor) -> None:
         assert_close(q[i], q2[i])
 
     minitorch.grad_check(lambda a: minitorch.logsoftmax(a, dim=2), t)
+
+
+@pytest.mark.task4_4
+def test_max_controlled() -> None:
+    """
+    Test the `minitorch.nn.max` function with a controlled input to ensure correctness.
+    """
+    t = minitorch.tensor(
+        [
+            [[1.0, 2.0, 3.0, 4.0], [4.0, 3.0, 2.0, 1.0], [1.0, 3.0, 3.0, 1.0]],
+            [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]],
+        ]
+    )
+    dim = 2  # Max along the last dimension
+
+    # Expected result
+    expected = np.array([[4.0, 4.0, 3.0], [0.0, 0.0, 0.0]])
+
+    # Compute max using minitorch
+    out = max(t, dim)
+
+    # Compare the output
+    np.testing.assert_allclose(out.to_numpy(), expected, rtol=1e-5, atol=1e-5)
