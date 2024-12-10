@@ -5,7 +5,6 @@ Be sure you have the extra requirements installed.
 """
 
 import networkx as nx
-import plotly.graph_objects as go
 
 import minitorch
 
@@ -79,12 +78,3 @@ def make_graph(y, lr=False):
         G.graph["graph"] = {"rankdir": "LR"}
     output_graphviz_svg = nx.nx_pydot.to_pydot(G).create_svg()
     return output_graphviz_svg
-
-
-edge_trace = go.Scatter(
-    x=[edge[0][0] for edge in G.edges()],
-    y=[edge[0][1] for edge in G.edges()],
-    mode='lines',
-    line=dict(width=0.5, color='#888'),
-    hoverinfo='none'
-)

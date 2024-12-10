@@ -2,6 +2,53 @@ from mnist import MNIST
 
 import minitorch
 
+
+import os
+import urllib.request
+import gzip
+import sys
+
+# Add this at the top of the file with other global variables
+best_valid_acc = 0.0
+
+def download_mnist():
+    """Download MNIST dataset if not present"""
+    base_url = "http://yann.lecun.com/exdb/mnist/"
+    files = [
+        "train-images-idx3-ubyte.gz",
+        "train-labels-idx1-ubyte.gz",
+        "t10k-images-idx3-ubyte.gz",
+        "t10k-labels-idx1-ubyte.gz"
+    ]
+
+    data_dir = os.path.join(os.path.dirname(__file__), "data")
+    os.makedirs(data_dir, exist_ok=True)
+
+    # Download and extract each file
+    for filename in files:
+        filepath = os.path.join(data_dir, filename[:-3])  # Remove .gz
+        if not os.path.exists(filepath):
+            print(f"Downloading {filename}...")
+            urllib.request.urlretrieve(base_url + filename,
+                                     os.path.join(data_dir, filename))
+            # Extract .gz file
+            with gzip.open(os.path.join(data_dir, filename), 'rb') as f_in:
+                with open(filepath, 'wb') as f_out:
+                    f_out.write(f_in.read())
+            # Remove .gz file
+            os.remove(os.path.join(data_dir, filename))
+
+# Add this before the MNIST loading code
+# download_mnist()
+
+# data_dir = os.path.join(os.path.dirname(__file__), "data")
+# mndata = MNIST(data_dir)
+# images, labels = mndata.load_training()
+
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(parent_dir)
+import minitorch
+
 mndata = MNIST("project/data/")
 images, labels = mndata.load_training()
 
@@ -41,26 +88,13 @@ class Conv2d(minitorch.Module):
         self.bias = RParam(out_channels, 1, 1)
 
     def forward(self, input):
-        return minitorch.conv2d(input, self.weights.value) + self.bias.value
-        # TODO: Implement for Task 4.5.
-        #raise NotImplementedError("Need to implement for Task 4.5")
+        # Apply convolution using Conv2dFun
+        output = minitorch.Conv2dFun.apply(input, self.weights.value)
+        # Add bias
+        return output + self.bias.value
 
 
 class Network(minitorch.Module):
-    """
-    Implement a CNN for MNist classification based on LeNet.
-
-    This model should implement the following procedure:
-
-    1. Apply a convolution with 4 output channels and a 3x3 kernel followed by a ReLU (save to self.mid)
-    2. Apply a convolution with 8 output channels and a 3x3 kernel followed by a ReLU (save to self.out)
-    3. Apply 2D pooling (either Avg or Max) with 4x4 kernel.
-    4. Flatten channels, height, and width. (Should be size BATCHx392)
-    5. Apply a Linear to size 64 followed by a ReLU and Dropout with rate 25%
-    6. Apply a Linear to size C (number of classes).
-    7. Apply a logsoftmax over the class dimension.
-    """
-
     def __init__(self):
         super().__init__()
 
@@ -68,26 +102,38 @@ class Network(minitorch.Module):
         self.mid = None
         self.out = None
 
-        self.layer1 = Conv2d(1, 4, 3, 3)
-        self.layer2 = Conv2d(4, 8, 3, 3)
-        self.layer3 = Linear(392, 64)
-        self.layer4 = Linear(64, C)
-        # TODO: Implement for Task 4.5.
-        #raise NotImplementedError("Need to implement for Task 4.5")
+        # First conv layer: 1 input channel, 4 output channels, 3x3 kernel
+        self.conv1 = Conv2d(1, 4, 3, 3)
+
+        # Second conv layer: 4 input channels, 8 output channels, 3x3 kernel
+        self.conv2 = Conv2d(4, 8, 3, 3)
+
+        # Linear layers
+        self.linear1 = Linear(392, 64)  # 392 = 8 * 7 * 7 (after pooling)
+        self.linear2 = Linear(64, C)
 
     def forward(self, x):
-        self.mid = self.layer1.forward(x).relu()
-        self.out = self.layer2.forward(self.mid).relu()
-        h = minitorch.nn.maxpool2d(self.out, (4, 4))
-        h = h.view(BATCH, 392)
+        # First conv + ReLU
+        self.mid = self.conv1.forward(x).relu()
 
-        h = self.layer3.forward(h).relu()
-        h = minitorch.nn.dropout(h, 0.25, not self.training)
-        h = self.layer4.forward(h)
-        return minitorch.nn.logsoftmax(h, 1)
-        # TODO: Implement for Task 4.5.
-        #raise NotImplementedError("Need to implement for Task 4.5")
+        # Second conv + ReLU
+        self.out = self.conv2.forward(self.mid).relu()
 
+        # Max pooling with 4x4 kernel
+        pooled = minitorch.nn.maxpool2d(self.out, (4, 4))
+
+        batch_size = pooled.shape[0]
+        flattened = pooled.view(batch_size, 392)
+
+        # First linear layer + ReLU + Dropout
+        hidden = self.linear1.forward(flattened).relu()
+        dropped = minitorch.dropout(hidden, 0.25)
+
+        # Second linear layer
+        logits = self.linear2.forward(dropped)
+
+        # LogSoftmax
+        return minitorch.logsoftmax(logits, dim=1)
 
 def make_mnist(start, stop):
     ys = []
@@ -102,7 +148,22 @@ def make_mnist(start, stop):
 
 
 def default_log_fn(epoch, total_loss, correct, total, losses, model):
-    print(f"Epoch {epoch} loss {total_loss} valid acc {correct}/{total}")
+    global best_valid_acc
+    best_valid_acc = max(best_valid_acc, correct)
+
+    # Create log message
+    log_msg = f"Epoch {epoch} (batch {len(losses)}) loss {total_loss} valid acc {correct}/{total} best valid acc {best_valid_acc}"
+
+    # Print to console
+    print(log_msg)
+
+    # Write to log file
+    log_dir = "logs"
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, "mnist_training.log")
+
+    with open(log_file, "a") as f:
+        f.write(log_msg + "\n")
 
 
 class ImageTrain:
@@ -113,7 +174,7 @@ class ImageTrain:
         return self.model.forward(minitorch.tensor([x], backend=BACKEND))
 
     def train(
-        self, data_train, data_val, learning_rate, max_epochs=500, log_fn=default_log_fn
+        self, data_train, data_val, learning_rate, max_epochs=25, log_fn=default_log_fn
     ):
         (X_train, y_train) = data_train
         (X_val, y_val) = data_val
