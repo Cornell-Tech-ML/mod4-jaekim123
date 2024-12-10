@@ -1,22 +1,19 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Optional, Type
+from typing import TYPE_CHECKING, Callable, Optional, Type, List
 
-import numpy as np
 from typing_extensions import Protocol
+
+import minitorch
 
 from . import operators
 from .tensor_data import (
-    MAX_DIMS,
-    broadcast_index,
-    index_to_position,
     shape_broadcast,
-    to_index,
 )
 
 if TYPE_CHECKING:
     from .tensor import Tensor
-    from .tensor_data import Index, Shape, Storage, Strides
+    from .tensor_data import Shape, Storage, Strides
 
 
 class MapProto(Protocol):
@@ -41,7 +38,9 @@ class TensorOps:
     @staticmethod
     def reduce(
         fn: Callable[[float, float], float], start: float = 0.0
-    ) -> Callable[[Tensor, int], Tensor]: ...
+    ) -> Callable[[Tensor, int], Tensor]:
+        """Reduce placeholder"""
+        ...
 
     @staticmethod
     def matrix_multiply(a: Tensor, b: Tensor) -> Tensor:
@@ -57,10 +56,12 @@ class TensorBackend:
         that implements map, zip, and reduce higher-order functions.
 
         Args:
+        ----
             ops : tensor operations object see `tensor_ops.py`
 
 
         Returns:
+        -------
             A collection of tensor functions
 
         """
@@ -112,12 +113,14 @@ class SimpleOps(TensorOps):
                     out[i, j] = fn(a[i, 0])
 
         Args:
+        ----
             fn: function from float-to-float to apply.
             a (:class:`TensorData`): tensor to map over
             out (:class:`TensorData`): optional, tensor data to fill in,
                    should broadcast with `a`
 
         Returns:
+        -------
             new tensor data
 
         """
@@ -154,11 +157,13 @@ class SimpleOps(TensorOps):
 
 
         Args:
+        ----
             fn: function from two floats-to-float to apply
             a (:class:`TensorData`): tensor to zip over
             b (:class:`TensorData`): tensor to zip over
 
         Returns:
+        -------
             :class:`TensorData` : new tensor data
 
         """
@@ -179,26 +184,16 @@ class SimpleOps(TensorOps):
     def reduce(
         fn: Callable[[float, float], float], start: float = 0.0
     ) -> Callable[["Tensor", int], "Tensor"]:
-        """Higher-order tensor reduce function. ::
-
-          fn_reduce = reduce(fn)
-          out = fn_reduce(a, dim)
-
-        Simple version ::
-
-            for j:
-                out[1, j] = start
-                for i:
-                    out[1, j] = fn(out[1, j], a[i, j])
-
+        """Apply a reduction function to a tensor along a specific axis.
 
         Args:
-            fn: function from two floats-to-float to apply
-            a (:class:`TensorData`): tensor to reduce over
-            dim (int): int of dim to reduce
+        ----
+            fn (Callable[[float, float], float]): A binary function to reduce elements.
+            start (float, optional): The initial value for the reduction. Defaults to 0.0.
 
         Returns:
-            :class:`TensorData` : new tensor
+        -------
+            Callable[["Tensor", int], "Tensor"]: A function that performs the reduction along the given axis.
 
         """
         f = tensor_reduce(fn)
@@ -218,8 +213,40 @@ class SimpleOps(TensorOps):
 
     @staticmethod
     def matrix_multiply(a: "Tensor", b: "Tensor") -> "Tensor":
-        """Matrix multiplication"""
-        raise NotImplementedError("Not implemented in this assignment")
+        """Perform matrix multiplication between two 2D tensors.
+
+        Args:
+        ----
+            a (Tensor): The first matrix with shape (m, n).
+            b (Tensor): The second matrix with shape (n, p).
+
+        Returns:
+        -------
+            Tensor: The result of matrix multiplication with shape (m, p).
+
+        """
+        # Ensure the shapes are compatible for matrix multiplication
+        assert (
+            a.shape[-1] == b.shape[0]
+        ), "Matrix shapes are not aligned for multiplication."
+
+        # Get dimensions
+        m, n = a.shape
+        n, p = b.shape
+
+        # Create an output tensor of shape (m, p)
+        result = minitorch.zeros((m, p))
+
+        # Perform matrix multiplication
+        for i in range(m):
+            for j in range(p):
+                sum_value = 0.0
+                for k in range(n):
+                    sum_value += a[i, k] * b[k, j]
+                result[i, j] = sum_value
+
+        return result
+        # raise NotImplementedError("Not implemented in this assignment")
 
     is_cuda = False
 
@@ -246,9 +273,11 @@ def tensor_map(
       broadcast. (`in_shape` must be smaller than `out_shape`).
 
     Args:
+    ----
         fn: function from float-to-float to apply
 
     Returns:
+    -------
         Tensor map function.
 
     """
@@ -261,7 +290,37 @@ def tensor_map(
         in_shape: Shape,
         in_strides: Strides,
     ) -> None:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        out_size: int = 1
+        for dim in out_shape:
+            out_size *= dim
+
+        def get_index(index: List[int], shape: Shape, strides: Strides) -> int:
+            storage_index: int = 0
+            for i, (idx, stride) in enumerate(zip(index, strides)):
+                storage_index += idx * stride
+            return storage_index
+
+        def unravel_index(flat_index: int, shape: Shape) -> List[int]:
+            idx: List[int] = []
+            for dim in reversed(shape):
+                idx.append(flat_index % dim)
+                flat_index //= dim
+            return list(reversed(idx))
+
+        for i in range(out_size):
+            out_idx: List[int] = unravel_index(i, out_shape)
+
+            in_idx: List[int] = [
+                0 if in_dim == 1 else out_dim
+                for out_dim, in_dim in zip(
+                    out_idx, [1] * (len(out_shape) - len(in_shape)) + list(in_shape)
+                )
+            ]
+
+            in_storage_idx: int = get_index(in_idx, in_shape, in_strides)
+            out_storage_idx: int = get_index(out_idx, out_shape, out_strides)
+
+            out[out_storage_idx] = fn(in_storage[in_storage_idx])
 
     return _map
 
@@ -287,9 +346,11 @@ def tensor_zip(
       and `b_shape` broadcast to `out_shape`.
 
     Args:
+    ----
         fn: function mapping two floats to float to apply
 
     Returns:
+    -------
         Tensor zip function.
 
     """
@@ -305,9 +366,52 @@ def tensor_zip(
         b_shape: Shape,
         b_strides: Strides,
     ) -> None:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        # TODO: Implement for Task 2.3.
+
+        out_size: int = 1
+        for dim in out_shape:
+            out_size *= dim
+
+        def get_index(index: List[int], shape: Shape, strides: Strides) -> int:
+            storage_index: int = 0
+            for i, (idx, stride) in enumerate(zip(index, strides)):
+                storage_index += idx * stride
+            return storage_index
+
+        def unravel_index(flat_index: int, shape: Shape) -> List[int]:
+            idx: List[int] = []
+            for dim in reversed(shape):
+                idx.append(flat_index % dim)
+                flat_index //= dim
+            return list(reversed(idx))
+
+        for i in range(out_size):
+            out_idx: List[int] = unravel_index(i, out_shape)
+
+            a_idx: List[int] = [
+                0 if a_dim == 1 else out_dim
+                for out_dim, a_dim in zip(
+                    out_idx, [1] * (len(out_shape) - len(a_shape)) + list(a_shape)
+                )
+            ]
+
+            b_idx: List[int] = [
+                0 if b_dim == 1 else out_dim
+                for out_dim, b_dim in zip(
+                    out_idx, [1] * (len(out_shape) - len(b_shape)) + list(b_shape)
+                )
+            ]
+
+            a_storage_idx: int = get_index(a_idx, a_shape, a_strides)
+            b_storage_idx: int = get_index(b_idx, b_shape, b_strides)
+            out_storage_idx: int = get_index(out_idx, out_shape, out_strides)
+
+            out[out_storage_idx] = fn(
+                a_storage[a_storage_idx], b_storage[b_storage_idx]
+            )
 
     return _zip
+    # raise NotImplementedError("Need to implement for Task 2.3")
 
 
 def tensor_reduce(
@@ -319,9 +423,11 @@ def tensor_reduce(
        except with `reduce_dim` turned to size `1`
 
     Args:
+    ----
         fn: reduction function mapping two floats to float
 
     Returns:
+    -------
         Tensor reduce function.
 
     """
@@ -335,9 +441,45 @@ def tensor_reduce(
         a_strides: Strides,
         reduce_dim: int,
     ) -> None:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        # TODO: Implement for Task 2.3.
+
+        out_size: int = 1
+        for dim in out_shape:
+            out_size *= dim
+
+        def get_index(index: List[int], shape: Shape, strides: Strides) -> int:
+            storage_index: int = 0
+            for i, (idx, stride) in enumerate(zip(index, strides)):
+                storage_index += idx * stride
+            return storage_index
+
+        def unravel_index(flat_index: int, shape: Shape) -> List[int]:
+            idx: List[int] = []
+            for dim in reversed(shape):
+                idx.append(flat_index % dim)
+                flat_index //= dim
+            return list(reversed(idx))
+
+        for i in range(out_size):
+            out_idx: List[int] = unravel_index(i, out_shape)
+
+            a_idx: List[int] = out_idx.copy()
+            a_idx[reduce_dim] = 0
+
+            out_storage_idx: int = get_index(out_idx, out_shape, out_strides)
+            a_storage_idx: int = get_index(a_idx, a_shape, a_strides)
+            result: float = a_storage[a_storage_idx]
+
+            for j in range(1, a_shape[reduce_dim]):
+                a_idx[reduce_dim] = j
+                a_storage_idx = get_index(a_idx, a_shape, a_strides)
+                result = fn(result, a_storage[a_storage_idx])
+
+            out[out_storage_idx] = result
 
     return _reduce
+
+    # raise NotImplementedError("Need to implement for Task 2.3")
 
 
 SimpleBackend = TensorBackend(SimpleOps)
